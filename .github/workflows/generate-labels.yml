@@ -1,0 +1,28 @@
+# Generate Labels Workflow - Auto-label PRs and Issues
+# Applies labels based on title patterns defined in .github/labeler.yml
+name: "Generate Labels"
+
+on:
+  - pull_request # Trigger on PR events
+  - issues # Trigger on issue events
+
+jobs:
+  label:
+    name: "Label PR based on title"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # Read labeler config
+      issues: write # Apply labels to issues
+      pull-requests: write # Apply labels to PRs
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Label PR based on title
+        uses: srvaroa/labeler@v1
+        with:
+          config_path: .github/labeler.yml # Label rules configuration
+          use_local_config: false # Use config from default branch
+          fail_on_error: false # Don't fail workflow if labeling fails
+        env:
+          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" # Required for GitHub API

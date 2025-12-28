@@ -1,0 +1,345 @@
+# GitLab CI/CD Pipeline - Terraform Deployment to Vercel
+# This pipeline uses Terraform as the primary deployment method for self-hosted
+# GitLab. No Vercel Git integration is required.
+#
+# Required GitLab CI/CD Variables
+#
+# Vercel (used by vercel CLI in build/deploy jobs):
+#   VERCEL_TOKEN              - Vercel API token
+#   VERCEL_ORG_ID             - Vercel team/org ID (required for team deployments)
+#   VERCEL_PROJECT_ID_API     - Vercel project ID for API
+#   VERCEL_PROJECT_ID_WEB     - Vercel project ID for Web
+#
+# Terraform Variables (used by terraform:plan/apply for Vercel env vars):
+#   TF_VAR_vercel_api_token       - Same as VERCEL_TOKEN
+#   TF_VAR_vercel_team_id         - Same as VERCEL_ORG_ID
+#   TF_VAR_database_url           - PostgreSQL connection URL
+#   TF_VAR_database_direct_url    - PostgreSQL direct URL
+#   TF_VAR_redis_url              - Redis connection URL (web only)
+#   TF_VAR_nextauth_secret        - NextAuth.js secret (web only)
+#   TF_VAR_jwt_secret             - JWT signing secret
+#   TF_VAR_nextauth_secret        - NextAuth.js secret
+#   TF_VAR_inngest_signing_key    - Inngest signing key
+#   TF_VAR_inngest_event_key      - Inngest event key
+
+stages:
+  - setup
+  - validate
+  - build
+  - migrate
+  - deploy
+  - post-deploy
+
+# Prevent duplicate pipelines (MR + branch push for same commit)
+# Reference: https://docs.gitlab.com/ee/ci/yaml/workflow.html
+workflow:
+  rules:
+    # Run for merge requests
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    # Run for pushes to main (for deployments)
+    - if: $CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "push"
+    # Allow manual runs from GitLab UI (web interface)
+    - if: $CI_PIPELINE_SOURCE == "web"
+
+variables:
+  TERRAFORM_VERSION: "1.14.3"
+
+.bun_job: &bun_job
+  image: oven/bun:1.3.5
+
+.terraform_job: &terraform_job
+  image: hashicorp/terraform:${TERRAFORM_VERSION}
+
+.vercel_build_template: &vercel_build_template
+  before_script:
+    - bun add -g vercel@latest
+
+# Setup Stage - Install dependencies and generate Prisma client
+setup:
+  stage: setup
+  <<: *bun_job
+  interruptible: true
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}
+    paths:
+      - node_modules/
+      - apps/api/node_modules/
+      - apps/web/node_modules/
+      - packages/*/node_modules/
+    policy: pull-push # Setup job updates the cache
+  script:
+    # Refer: https://bun.sh/docs/pm/isolated-installs
+    - bun install
+    - bun run db:generate
+  artifacts:
+    paths:
+      - node_modules/
+      - apps/*/node_modules/
+      - packages/*/node_modules/
+      - packages/database/generated/
+    expire_in: 1 hour
+
+lint:
+  stage: validate
+  <<: *bun_job
+  interruptible: true
+  needs: [setup]
+  script:
+    - bun run lint
+
+build:
+  stage: validate
+  <<: *bun_job
+  interruptible: true
+  needs: [setup]
+  variables:
+    DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/playground"
+  script:
+    - bun run build
+
+# test:
+#   stage: validate
+#   <<: *bun_job
+#   interruptible: true
+#   needs: [setup]
+#   script:
+#     - bun run test
+#   allow_failure: true # No test files exist yet
+
+build:api:
+  stage: build
+  <<: *bun_job
+  interruptible: true
+  <<: *vercel_build_template
+  needs:
+    - job: setup
+      artifacts: true # Need because it will install dependencies by vercel build
+    - job: lint
+      artifacts: false
+    - job: build
+      artifacts: false
+    # - job: test
+    #   artifacts: false
+  variables:
+    VERCEL_PROJECT_ID: $VERCEL_PROJECT_ID_API
+    VERCEL_TELEMETRY_DISABLED: "true"
+    DATABASE_URL: $TF_VAR_database_url
+  script:
+    - vercel pull --environment=production --yes --token=$VERCEL_TOKEN
+    - vercel build --prod --token=$VERCEL_TOKEN
+  artifacts:
+    paths:
+      - .vercel/
+    expire_in: 1 hour
+
+build:web:
+  stage: build
+  <<: *bun_job
+  interruptible: true
+  <<: *vercel_build_template
+  needs:
+    - job: setup
+      artifacts: true # Need because it will install dependencies by vercel build
+    - job: lint
+      artifacts: false
+    - job: build
+      artifacts: false
+    # - job: test
+    #   artifacts: false
+  variables:
+    VERCEL_PROJECT_ID: $VERCEL_PROJECT_ID_WEB
+    VERCEL_TELEMETRY_DISABLED: "true"
+    DATABASE_URL: $TF_VAR_database_url
+    REDIS_URL: $TF_VAR_redis_url
+    NEXTAUTH_SECRET: $TF_VAR_nextauth_secret
+    NEXTAUTH_URL: "http://localhost:3000"
+    # Runtime env var (no NEXT_PUBLIC_) - actual value set by Terraform in Vercel
+    GRAPHQL_API_URL: "http://localhost:3001/graphql"
+  script:
+    - vercel pull --environment=production --yes --token=$VERCEL_TOKEN
+    - vercel build --prod --token=$VERCEL_TOKEN
+  artifacts:
+    paths:
+      - .vercel/
+      # When deploying monorepos, ensure the complete build output is available.
+      # For Next.js, this includes the .next directory which contains server-side code and static assets.
+      - apps/web/.next/
+    expire_in: 1 hour
+
+migrate:validate:
+  stage: validate
+  <<: *bun_job
+  interruptible: true
+  needs:
+    - job: setup
+      artifacts: true
+  services:
+    - postgres:16-alpine
+  variables:
+    POSTGRES_USER: postgres
+    POSTGRES_PASSWORD: postgres
+    POSTGRES_DB: test
+    DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/test"
+  script:
+    - cd packages/database
+    - bunx prisma migrate deploy
+    - bunx prisma validate
+
+migrate:deploy:
+  stage: migrate
+  <<: *bun_job
+  interruptible: false
+  allow_failure: false
+  needs:
+    - job: setup
+      artifacts: true
+    - job: migrate:validate
+      artifacts: false
+    - job: build:api
+      artifacts: false
+    - job: build:web
+      artifacts: false
+  variables:
+    DATABASE_URL: $TF_VAR_database_direct_url
+  when: manual
+  script:
+    - cd packages/database
+    - echo "Applying migrations..."
+    - bunx prisma migrate deploy
+    - echo "Migrations completed successfully"
+
+deploy:api:
+  stage: deploy
+  # Note: If use bun to install vercel, it will not work with --archive=tgz due to the error `The socket connection was closed unexpectedly`. So use node:24-alpine instead.
+  image: node:24-alpine
+  interruptible: false
+  needs:
+    - job: setup
+      artifacts: true # Need because it will install dependencies by vercel build
+    - job: build:api
+      artifacts: true
+    - job: migrate:deploy
+      artifacts: false
+  environment:
+    name: production
+  variables:
+    VERCEL_PROJECT_ID: $VERCEL_PROJECT_ID_API
+    VERCEL_TELEMETRY_DISABLED: "true"
+  script:
+    # Reference: https://vercel.com/docs/cli/deploy
+    # --archive=tgz: Compresses deployment to avoid file upload limits
+    # --logs: Prints deployment logs for better CI visibility
+    # --meta: Adds metadata for tracking deployments in Vercel dashboard
+    - |
+      npx vercel deploy --prebuilt --prod --yes --logs \
+        --archive=tgz \
+        --meta deployedFrom="gitlab" \
+        --meta commitSHA=$CI_COMMIT_SHA \
+        --meta branchName=$CI_COMMIT_REF_NAME \
+        --meta jobName=$CI_JOB_NAME \
+        --meta jobID=$CI_JOB_ID \
+        --token=$VERCEL_TOKEN \
+        --debug
+
+post-deploy:api:
+  stage: post-deploy
+  <<: *terraform_job
+  interruptible: false
+  needs:
+    - job: deploy:api
+      artifacts: false
+  variables:
+    TF_WORKSPACE: "vercel"
+    TF_IN_AUTOMATION: "true"
+  before_script:
+    - apk add --no-cache jq curl
+  script:
+    - sleep 30 # Wait for vercel deployment to be ready. This is a bad practice to wait for a fixed time.
+    - cd infra/terraform
+    - terraform init -input=false
+    - export INNGEST_SERVE_HOST=$(terraform output -json | jq -r '.inngest_endpoint.value')
+    - curl -X PUT ${INNGEST_SERVE_HOST}
+
+deploy:web:
+  stage: deploy
+  # Note: If use bun to install vercel, it will not work with --archive=tgz due to the error `The socket connection was closed unexpectedly`. So use node:24-alpine instead.
+  image: node:24-alpine
+  interruptible: false
+  needs:
+    - job: setup
+      artifacts: true # Need because it will install dependencies by vercel build
+    - job: build:web
+      artifacts: true
+    - job: migrate:deploy
+      artifacts: false
+  environment:
+    name: production
+  variables:
+    VERCEL_PROJECT_ID: $VERCEL_PROJECT_ID_WEB
+    VERCEL_TELEMETRY_DISABLED: "true"
+  script:
+    # Reference: https://vercel.com/docs/cli/deploy
+    # --archive=tgz: Compresses deployment to avoid file upload limits
+    # --logs: Prints deployment logs for better CI visibility
+    # --meta: Adds metadata for tracking deployments in Vercel dashboard
+    - |
+      npx vercel deploy --prebuilt --prod --yes --logs \
+        --archive=tgz \
+        --meta deployedFrom="gitlab" \
+        --meta commitSHA=$CI_COMMIT_SHA \
+        --meta branchName=$CI_COMMIT_REF_NAME \
+        --meta jobName=$CI_JOB_NAME \
+        --meta jobID=$CI_JOB_ID \
+        --token=$VERCEL_TOKEN \
+        --debug
+
+# Terraform Validate Stage
+# - Run for all MRs and main
+terraform:validate:
+  stage: validate
+  <<: *terraform_job
+  needs: [] # Don't need any other jobs to run before this
+  script:
+    - cd infra/terraform
+    - terraform init
+    - terraform validate
+
+# Terraform Plan Stage
+# - Run for all MRs and main
+terraform:plan:
+  stage: build
+  <<: *terraform_job
+  interruptible: false
+  needs:
+    - job: terraform:validate
+      artifacts: false
+  variables:
+    TF_WORKSPACE: "vercel" # Terraform will prepend the prefix automatically
+    TF_PLAN_ONLY: "true"
+  script:
+    - cd infra/terraform
+    - terraform init -input=false
+    - terraform plan -input=false -out=tfplan
+  artifacts:
+    paths:
+      - infra/terraform/tfplan
+      - infra/terraform/.terraform/ # Needed for apply
+    expire_in: 1 hour
+
+terraform:apply:
+  stage: deploy
+  <<: *terraform_job
+  interruptible: false
+  needs:
+    - job: terraform:plan
+      artifacts: true
+  variables:
+    TF_WORKSPACE: "vercel"
+    TF_IN_AUTOMATION: "true"
+  environment:
+    name: production
+  when: manual
+  script:
+    - cd infra/terraform
+    - terraform init -input=false
+    - terraform apply -input=false -auto-approve tfplan

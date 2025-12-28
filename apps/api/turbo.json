@@ -1,0 +1,16 @@
+{
+  "$schema": "../../node_modules/turbo/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "build": {
+      "inputs": ["$TURBO_DEFAULT$", "nest-cli.json"],
+      "outputs": ["dist/**"]
+    },
+    "dev": {
+      "dependsOn": ["^build", "^db:generate"]
+    },
+    "test": {
+      "inputs": ["$TURBO_DEFAULT$", "vitest.config.*", "test/**"]
+    }
+  }
+}

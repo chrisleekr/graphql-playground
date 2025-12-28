@@ -1,0 +1,124 @@
+# Terraform Workflow - Infrastructure Management
+# Manages Vercel project configuration and environment variables
+name: Terraform
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "infra/terraform/**" # Only run when Terraform files change
+  workflow_dispatch: # Allow manual trigger for infrastructure updates
+
+# Security: Restrict GITHUB_TOKEN to read-only
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false # Never cancel active Terraform operations
+
+env:
+  TERRAFORM_VERSION: "1.14.3"
+  TF_WORKSPACE: "vercel" # Terraform Cloud workspace name
+  TF_IN_AUTOMATION: "true"
+  # Terraform Cloud authentication (special env var format)
+  TF_TOKEN_app_terraform_io: ${{ secrets.TF_TOKEN_APP_TERRAFORM_IO }}
+  # TF_VAR_* vars are automatically read by Terraform as input variables
+  TF_VAR_vercel_api_token: ${{ secrets.TF_VAR_VERCEL_API_TOKEN }}
+  TF_VAR_vercel_team_id: ${{ secrets.TF_VAR_VERCEL_TEAM_ID }}
+  TF_VAR_database_url: ${{ secrets.TF_VAR_DATABASE_URL }}
+  TF_VAR_database_direct_url: ${{ secrets.TF_VAR_DATABASE_DIRECT_URL }}
+  TF_VAR_redis_url: ${{ secrets.TF_VAR_REDIS_URL }}
+  TF_VAR_jwt_secret: ${{ secrets.TF_VAR_JWT_SECRET }}
+  TF_VAR_nextauth_secret: ${{ secrets.TF_VAR_NEXTAUTH_SECRET }}
+  TF_VAR_inngest_signing_key: ${{ secrets.TF_VAR_INNGEST_SIGNING_KEY }}
+  TF_VAR_inngest_event_key: ${{ secrets.TF_VAR_INNGEST_EVENT_KEY }}
+  TF_VAR_project_prefix: ${{ secrets.TF_VAR_PROJECT_PREFIX }}
+
+jobs:
+  # Validate: Check Terraform configuration is valid
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          cli_config_credentials_token: ${{ secrets.TF_TOKEN_APP_TERRAFORM_IO }}
+
+      - name: Terraform Format Check
+        working-directory: infra/terraform
+        run: terraform fmt -check -recursive # Fail if files aren't formatted
+
+      - name: Terraform Init
+        working-directory: infra/terraform
+        run: terraform init -input=false
+
+      - name: Terraform Validate
+        working-directory: infra/terraform
+        run: terraform validate # Check syntax and references
+
+  # Plan and Apply: Combined job to avoid storing tfplan as artifact
+  plan-and-apply:
+    name: Plan & Apply
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: validate
+    environment:
+      name: production
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          cli_config_credentials_token: ${{ secrets.TF_TOKEN_APP_TERRAFORM_IO }}
+
+      - name: Terraform Init
+        working-directory: infra/terraform
+        run: terraform init -input=false
+
+      - name: Terraform Plan
+        id: plan
+        working-directory: infra/terraform
+        run: |
+          set +e # Don't exit on non-zero (exit code 2 = changes)
+          terraform plan -input=false -out=tfplan -detailed-exitcode
+          exit_code=$?
+          set -e
+
+          # -detailed-exitcode: 0=no changes, 1=error, 2=changes present
+          if [ "$exit_code" = "1" ]; then
+            echo "Terraform plan failed"
+            exit 1
+          elif [ "$exit_code" = "2" ]; then
+            echo "has-changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "has-changes=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Terraform Apply
+        if: steps.plan.outputs.has-changes == 'true' # Only apply if changes exist
+        working-directory: infra/terraform
+        run: terraform apply -input=false -auto-approve tfplan
+
+      - name: No changes detected
+        if: steps.plan.outputs.has-changes == 'false'
+        run: |
+          echo "## Terraform - No Changes" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Infrastructure is up-to-date. No changes to apply." >> $GITHUB_STEP_SUMMARY
+
+      - name: Apply complete
+        if: steps.plan.outputs.has-changes == 'true'
+        run: |
+          echo "## Terraform Apply Complete!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Infrastructure changes have been applied successfully." >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,204 @@
+# CI Workflow - Lint, Build, Test, Validate
+# Validates code quality on every PR and main push
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened] # Trigger on PR open, update, reopen
+  push:
+    branches: [main] # Also run on direct pushes to main
+  workflow_dispatch: # Allow manual trigger from GitHub UI
+
+# Security: Restrict GITHUB_TOKEN to read-only
+permissions:
+  contents: read
+
+# Cancel redundant runs when new commits push to same PR/branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Centralize versions for consistency across jobs
+env:
+  BUN_VERSION: "1.3.5"
+  TERRAFORM_VERSION: "1.14.3"
+
+jobs:
+  # First job: Install deps once, share via artifacts to parallel jobs
+  setup:
+    name: Setup
+    runs-on: ubuntu-latest
+    timeout-minutes: 10 # Fail fast if install hangs
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          cache: true # Use built-in caching (simpler than actions/cache)
+          cache-dependency-path: bun.lock # Cache key based on lockfile
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Generate Prisma client
+        run: bun run db:generate # Required for type-checking
+
+      - name: Upload node_modules artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: node-modules-${{ github.run_id }} # Unique per run to avoid conflicts
+          path: |
+            node_modules
+            apps/*/node_modules
+            packages/*/node_modules
+            packages/database/generated # Include generated Prisma client
+          retention-days: 1 # Short retention - only needed for this workflow run
+
+  # Parallel job: Run ESLint
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: setup # Wait for dependencies
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          # No cache needed - using artifacts from setup
+
+      - name: Download node_modules artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: node-modules-${{ github.run_id }}
+          path: . # Extract to workspace root
+
+      - name: Run lint
+        run: bun run lint
+
+  # Parallel job: TypeScript compilation check
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15 # Build takes longer than lint
+    needs: setup
+    env:
+      # Dummy URL for build-time type checking (not actual DB connection)
+      DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/playground"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Download node_modules artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: node-modules-${{ github.run_id }}
+          path: .
+
+      - name: Run build
+        run: bun run build
+
+  # Parallel job: Run test suite
+  # test:
+  #   name: Test
+  #   runs-on: ubuntu-latest
+  #   timeout-minutes: 15
+  #   needs: setup
+  #   continue-on-error: true # Don't fail workflow - no tests exist yet
+  #   steps:
+  #     - name: Checkout repository
+  #       uses: actions/checkout@v6
+
+  #     - name: Setup Bun
+  #       uses: oven-sh/setup-bun@v2
+  #       with:
+  #         bun-version: ${{ env.BUN_VERSION }}
+
+  #     - name: Download node_modules artifacts
+  #       uses: actions/download-artifact@v7
+  #       with:
+  #         name: node-modules-${{ github.run_id }}
+  #         path: .
+
+  #     - name: Run tests
+  #       run: bun run test
+
+  # Parallel job: Validate Prisma migrations against real PostgreSQL
+  migrate-validate:
+    name: Validate Migrations
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: setup
+    # Spin up PostgreSQL container for migration testing
+    services:
+      postgres:
+        image: postgres:16-alpine # Match production version
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test
+        ports:
+          - 5432:5432
+        options: >- # Health check ensures DB is ready before job runs
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/test"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Download node_modules artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: node-modules-${{ github.run_id }}
+          path: .
+
+      - name: Run Prisma migrate deploy
+        working-directory: packages/database
+        run: bunx prisma migrate deploy # Apply all migrations
+
+      - name: Validate Prisma schema
+        working-directory: packages/database
+        run: bunx prisma validate # Check schema is valid
+
+  # Validate Terraform (no deps - runs in parallel with setup)
+  terraform-validate:
+    name: Validate Terraform
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # No 'needs' - runs immediately in parallel
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: Terraform Init
+        working-directory: infra/terraform
+        run: terraform init -backend=false # Skip backend for validation only
+
+      - name: Terraform Validate
+        working-directory: infra/terraform
+        run: terraform validate

@@ -1,0 +1,15 @@
+vercel_api_token = "<your-vercel-api-token>"
+vercel_team_id   = "<your-vercel-team-id>"
+project_prefix   = "graphql-playground"
+
+# i.e. postgresql://postgres:<db-password>@<host>.supabase.co:5432/postgres
+database_url = "<your-database-url>"
+database_direct_url   = "<your-database-direct-url>"
+
+redis_url = "redis://default:<upstash-redis-password>@relevant-racer-14532.upstash.io:6379"
+
+jwt_secret      = "<your-32-char-secret>"
+nextauth_secret = "<your-32-char-secret>"
+
+inngest_signing_key = "<your-inngest-singing-key>"
+inngest_event_key   = "<your-inngest-event-key>"

@@ -1,0 +1,43 @@
+# =============================================================================
+
+# Vercel Deployment Ignore Rules
+
+# =============================================================================
+
+# Environment files (NEVER deploy)
+
+.env
+.env.*
+!.env.example
+
+# Build artifacts (rebuilt on Vercel)
+
+dist/
+*.tsbuildinfo
+
+# Turborepo cache
+
+.turbo/
+
+# Node modules
+
+node_modules/
+
+# IDE
+
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+
+.DS_Store
+
+# Test coverage
+
+coverage/
+
+# Local development
+
+*.log

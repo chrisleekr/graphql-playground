@@ -1,0 +1,86 @@
+# ------------------------------------------------------
+# THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
+# ------------------------------------------------------
+
+input CreateGenerationInput {
+  forceFail: Boolean = false
+  prompt: String!
+}
+
+"""
+A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
+"""
+scalar DateTime
+
+"""generations"""
+type Generation {
+  completedAt: DateTime
+  createdAt: DateTime!
+  error: String
+  id: ID!
+  prompt: String!
+  result: String
+  startedAt: DateTime
+  status: GenerationStatus!
+}
+
+"""An edge in a connection"""
+type GenerationEdge {
+  """A cursor for use in pagination"""
+  cursor: String!
+
+  """The item at the end of the edge"""
+  node: Generation!
+}
+
+"""The status of a generation"""
+enum GenerationStatus {
+  COMPLETE
+  FAILED
+  PENDING
+  PROCESSING
+}
+
+"""A paginated list of generations"""
+type GenerationsConnection {
+  """A list of edges"""
+  edges: [GenerationEdge!]!
+
+  """Information to aid in pagination"""
+  pageInfo: PageInfo!
+
+  """Total count of items matching the query"""
+  totalCount: Float!
+}
+
+type Mutation {
+  createGeneration(input: CreateGenerationInput!): Generation!
+  retryGeneration(id: ID!): Generation!
+}
+
+"""Information about pagination"""
+type PageInfo {
+  """Cursor of the last edge"""
+  endCursor: String
+
+  """Whether there are more items after the last edge"""
+  hasNextPage: Boolean!
+
+  """Whether there are more items before the first edge"""
+  hasPreviousPage: Boolean!
+
+  """Cursor of the first edge"""
+  startCursor: String
+}
+
+type Query {
+  generation(id: ID!): Generation!
+  generations(
+    """Cursor to start after (for forward pagination)"""
+    after: String
+
+    """Number of items to return"""
+    first: Int = 20
+    status: GenerationStatus
+  ): GenerationsConnection!
+}

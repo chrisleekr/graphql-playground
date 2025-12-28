@@ -1,0 +1,361 @@
+# Deploy Workflow - Build and Deploy to Vercel
+# Only runs after CI passes, preventing broken deployments
+name: Deploy
+
+on:
+  # Trigger after CI workflow completes (not just on push)
+  workflow_run:
+    workflows: ["CI"] # Must match exact workflow name
+    branches: [main] # Only for main branch
+    types: [completed] # Fires on success, failure, or cancelled
+  workflow_dispatch: # Allow manual trigger for hotfixes
+
+# Security: Restrict GITHUB_TOKEN to read-only
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false # Never cancel active deployments
+
+# Centralize versions and credentials
+env:
+  BUN_VERSION: "1.3.5"
+  TERRAFORM_VERSION: "1.14.3"
+  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }} # Required by Vercel CLI
+  VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
+jobs:
+  # Setup: Install deps and prepare artifacts
+  setup:
+    name: Setup
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Guard: Only proceed if CI passed OR manually triggered
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          cache: true
+          cache-dependency-path: bun.lock
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Generate Prisma client
+        run: bun run db:generate
+
+      - name: Upload node_modules artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: node-modules-${{ github.run_id }} # Unique to avoid conflicts
+          path: |
+            node_modules
+            apps/*/node_modules
+            packages/*/node_modules
+            packages/database/generated
+          retention-days: 1
+
+  # Build API: Create Vercel build output
+  build-api:
+    name: Build API
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: setup
+    env:
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_API }} # Links to Vercel project
+      VERCEL_TELEMETRY_DISABLED: "true" # Privacy: Disable telemetry
+      DATABASE_URL: ${{ secrets.TF_VAR_DATABASE_URL }} # Needed for Prisma at build
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Download node_modules artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: node-modules-${{ github.run_id }}
+          path: .
+
+      - name: Install Vercel CLI
+        run: bun add -g vercel@latest
+
+      - name: Pull Vercel Environment
+        run: vercel pull --environment=production --yes --token=${{ secrets.VERCEL_TOKEN }}
+        # Downloads .vercel/project.json and env vars
+
+      - name: Build with Vercel
+        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+        # Creates .vercel/output/ with optimized build
+
+      - name: Upload Vercel build artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: vercel-api-build-${{ github.run_id }}
+          path: .vercel/
+          retention-days: 1
+
+  # Build Web: Create Vercel build output for Next.js
+  build-web:
+    name: Build Web
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: setup
+    env:
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_WEB }}
+      VERCEL_TELEMETRY_DISABLED: "true"
+      DATABASE_URL: ${{ secrets.TF_VAR_DATABASE_URL }}
+      REDIS_URL: ${{ secrets.TF_VAR_REDIS_URL }}
+      NEXTAUTH_SECRET: ${{ secrets.TF_VAR_NEXTAUTH_SECRET }}
+      NEXTAUTH_URL: "http://localhost:3000" # Placeholder for build
+      GRAPHQL_API_URL: "http://localhost:3001/graphql" # Runtime value set by Terraform
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Download node_modules artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: node-modules-${{ github.run_id }}
+          path: .
+
+      - name: Install Vercel CLI
+        run: bun add -g vercel@latest
+
+      - name: Pull Vercel Environment
+        run: vercel pull --environment=production --yes --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Build with Vercel
+        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Upload Vercel build artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: vercel-web-build-${{ github.run_id }}
+          path: |
+            .vercel/
+            apps/web/.next/ # Include Next.js build output
+          retention-days: 1
+
+  # Migrate: Apply database migrations before deploy
+  migrate:
+    name: Migrate Database
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [build-api, build-web] # Wait for builds to succeed first
+    env:
+      # Use direct URL (not pooled) for migrations to avoid connection issues
+      DATABASE_URL: ${{ secrets.TF_VAR_DATABASE_DIRECT_URL }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Download node_modules artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: node-modules-${{ github.run_id }}
+          path: .
+
+      - name: Apply database migrations
+        working-directory: packages/database
+        run: |
+          echo "Applying migrations..."
+          bunx prisma migrate deploy
+          echo "Migrations completed successfully"
+
+  # Deploy API: Push prebuilt output to Vercel
+  deploy-api:
+    name: Deploy API
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: migrate # Deploy only after migrations succeed
+    environment:
+      name: production # GitHub Environment for protection rules
+      url: ${{ steps.deploy.outputs.url }} # Show deployment URL in UI
+    env:
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_API }}
+      VERCEL_TELEMETRY_DISABLED: "true"
+    outputs:
+      deployment-url: ${{ steps.deploy.outputs.url }} # Export for summary job
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24" # Use Node for npx vercel (more stable than bun)
+
+      - name: Download node_modules artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: node-modules-${{ github.run_id }}
+          path: .
+
+      - name: Download Vercel build artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: vercel-api-build-${{ github.run_id }}
+          path: .vercel/
+
+      - name: Deploy to Vercel
+        id: deploy
+        run: |
+          URL=$(npx vercel deploy --prebuilt --prod --yes \
+            --archive=tgz \
+            --meta deployedFrom="github" \
+            --meta commitSHA=${{ github.sha }} \
+            --meta branchName=${{ github.ref_name }} \
+            --meta workflow=${{ github.workflow }} \
+            --meta runId=${{ github.run_id }} \
+            --token=${{ secrets.VERCEL_TOKEN }})
+          # --prebuilt: Use pre-built output (faster)
+          # --archive=tgz: Compress to avoid upload limits
+          # --meta: Track deployment source in Vercel dashboard
+          echo "url=$URL" >> $GITHUB_OUTPUT
+          echo "Deployed to: $URL"
+
+  # Deploy Web: Push prebuilt Next.js to Vercel
+  deploy-web:
+    name: Deploy Web
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: migrate
+    environment:
+      name: production
+      url: ${{ steps.deploy.outputs.url }}
+    env:
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_WEB }}
+      VERCEL_TELEMETRY_DISABLED: "true"
+    outputs:
+      deployment-url: ${{ steps.deploy.outputs.url }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Download node_modules artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: node-modules-${{ github.run_id }}
+          path: .
+
+      - name: Download Vercel build artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: vercel-web-build-${{ github.run_id }}
+          path: . # Extract to root (includes apps/web/.next/)
+
+      - name: Deploy to Vercel
+        id: deploy
+        run: |
+          URL=$(npx vercel deploy --prebuilt --prod --yes \
+            --archive=tgz \
+            --meta deployedFrom="github" \
+            --meta commitSHA=${{ github.sha }} \
+            --meta branchName=${{ github.ref_name }} \
+            --meta workflow=${{ github.workflow }} \
+            --meta runId=${{ github.run_id }} \
+            --token=${{ secrets.VERCEL_TOKEN }})
+          echo "url=$URL" >> $GITHUB_OUTPUT
+          echo "Deployed to: $URL"
+
+  # Post-Deploy: Register Inngest functions with Inngest Cloud
+  post-deploy-api:
+    name: Sync Inngest
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: deploy-api # Only after API is live
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          cli_config_credentials_token: ${{ secrets.TF_TOKEN_APP_TERRAFORM_IO }}
+
+      - name: Get Inngest endpoint from Terraform
+        id: inngest
+        working-directory: infra/terraform
+        run: |
+          terraform init -input=false
+          # Read Inngest endpoint URL from Terraform state
+          INNGEST_SERVE_HOST=$(terraform output -raw inngest_endpoint 2>/dev/null || echo "")
+          echo "host=$INNGEST_SERVE_HOST" >> $GITHUB_OUTPUT
+
+      - name: Wait for deployment and sync Inngest
+        if: steps.inngest.outputs.host != '' # Skip if no endpoint configured
+        run: |
+          INNGEST_SERVE_HOST="${{ steps.inngest.outputs.host }}"
+          echo "Inngest endpoint: $INNGEST_SERVE_HOST"
+
+          # Retry loop: Wait for deployment to be reachable (max 100s)
+          for i in {1..10}; do
+            echo "Attempt $i/10: Checking if deployment is ready..."
+            if curl -sf "${INNGEST_SERVE_HOST%/api/inngest}/api/health" > /dev/null 2>&1; then
+              echo "Deployment is ready!"
+              break
+            fi
+            echo "Deployment not ready yet, waiting 10 seconds..."
+            sleep 10
+          done
+
+          # PUT request registers/syncs functions with Inngest Cloud
+          echo "Syncing Inngest endpoint..."
+          curl -X PUT "$INNGEST_SERVE_HOST" -v
+
+  # Summary: Show deployment URLs in GitHub UI
+  summary:
+    name: Deployment Summary
+    runs-on: ubuntu-latest
+    needs: [deploy-api, deploy-web]
+    if: always() && needs.deploy-api.result == 'success' && needs.deploy-web.result == 'success'
+    steps:
+      - name: Output deployment summary
+        run: |
+          echo "## Deployment Complete! 🚀" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **API**: ${{ needs.deploy-api.outputs.deployment-url }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Web**: ${{ needs.deploy-web.outputs.deployment-url }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+
+  # Skipped: Report when CI failed (provides visibility)
+  skipped:
+    name: Skipped (CI not successful)
+    runs-on: ubuntu-latest
+    # Only runs when triggered by workflow_run AND CI didn't succeed
+    if: ${{ github.event.workflow_run.conclusion != 'success' && github.event_name == 'workflow_run' }}
+    steps:
+      - name: Report skipped
+        run: |
+          echo "## Deployment Skipped ⏭️" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "CI workflow did not complete successfully." >> $GITHUB_STEP_SUMMARY
+          echo "Conclusion: ${{ github.event.workflow_run.conclusion }}" >> $GITHUB_STEP_SUMMARY

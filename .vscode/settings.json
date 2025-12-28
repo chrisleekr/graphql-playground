@@ -1,0 +1,60 @@
+{
+  "editor.insertSpaces": true,
+  "editor.formatOnSave": true,
+  "search.exclude": {
+    ".git": true,
+    ".build": true,
+    "**/.DS_Store": true,
+    "**/.vscode": true,
+    "**/node_modules": true
+  },
+  "cSpell.enabled": true,
+  "cSpell.language": "en-US",
+  "cSpell.words": [
+    "aquasecurity",
+    "bunx",
+    "chrisleekr",
+    "dotenv",
+    "healthcheck",
+    "hset",
+    "Inngest",
+    "interruptible",
+    "isready",
+    "NEXTAUTH",
+    "nextjs",
+    "nosniff",
+    "pgbouncer",
+    "picsum",
+    "pooler",
+    "QSTASH",
+    "SAMEORIGIN",
+    "srvaroa",
+    "supabase",
+    "tfvars",
+    "turbopack",
+    "Turborepo",
+    "vercel"
+  ],
+  "yaml.format.enable": true,
+  "[json]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[markdown]": {
+    "editor.defaultFormatter": "DavidAnson.vscode-markdownlint"
+  },
+  "[xml]": {
+    "editor.defaultFormatter": "redhat.vscode-xml"
+  },
+  "[css]": {
+    "editor.defaultFormatter": "stylelint.vscode-stylelint"
+  },
+  "[javascript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[shellscript]": {
+    "editor.defaultFormatter": "mads-hartmann.bash-ide-vscode"
+  },
+  "[terraform]": {
+    "editor.defaultFormatter": "hashicorp.terraform"
+  }
+}

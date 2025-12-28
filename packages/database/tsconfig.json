@@ -1,0 +1,18 @@
+{
+  "extends": "@repo/typescript-config/base.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "module": "CommonJS",
+    "target": "ES2022",
+    "moduleResolution": "node",
+    "outDir": "./dist",
+    "declaration": true,
+    "declarationMap": true,
+    "esModuleInterop": true,
+    "paths": {
+      "@prisma/generated": ["./generated/prisma/client"]
+    }
+  },
+  "include": ["src/**/*", "generated/**/*", "prisma.config.ts"],
+  "exclude": ["node_modules", "dist"]
+}
