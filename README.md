@@ -1,6 +1,8 @@
 # GraphQL Playground
 
-A monorepo demonstrating AI generation scheduling with durable execution, real-time status updates, and full-stack GraphQL.
+> A full-stack GraphQL application with NestJS, Apollo Server, and Next.js with durable background job execution.
+
+A full-stack GraphQL playground exploring modern API development with NestJS and Apollo Server, paired with a Next.js frontend. It demonstrates production patterns including authentication, rate limiting, and durable job execution via Inngest.
 
 ## Tech Stack
 
