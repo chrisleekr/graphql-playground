@@ -8,6 +8,7 @@
     "HashiCorp.terraform",
     "timonwong.shellcheck",
     "foxundermoon.shell-format",
-    "DavidAnson.vscode-markdownlint"
+    "DavidAnson.vscode-markdownlint",
+    "github.vscode-github-actions"
   ]
 }

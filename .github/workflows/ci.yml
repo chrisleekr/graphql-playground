@@ -24,7 +24,7 @@ env:
   TERRAFORM_VERSION: "1.14.3"
 
 jobs:
-  # First job: Install deps once, share via artifacts to parallel jobs
+  # First job: Install deps once, generate Prisma client, share via artifacts
   setup:
     name: Setup
     runs-on: ubuntu-latest
@@ -41,20 +41,16 @@ jobs:
           cache-dependency-path: bun.lock # Cache key based on lockfile
 
       - name: Install dependencies
-        run: bun install
+        run: bun install --frozen-lockfile
 
       - name: Generate Prisma client
         run: bun run db:generate # Required for type-checking
 
-      - name: Upload node_modules artifacts
+      - name: Upload Prisma generated client
         uses: actions/upload-artifact@v6
         with:
-          name: node-modules-${{ github.run_id }} # Unique per run to avoid conflicts
-          path: |
-            node_modules
-            apps/*/node_modules
-            packages/*/node_modules
-            packages/database/generated # Include generated Prisma client
+          name: prisma-generated-${{ github.run_id }}
+          path: packages/database/generated
           retention-days: 1 # Short retention - only needed for this workflow run
 
   # Parallel job: Run ESLint
@@ -62,7 +58,7 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: setup # Wait for dependencies
+    needs: setup # Wait for cache to be populated
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -71,13 +67,11 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          # No cache needed - using artifacts from setup
+          cache: true
+          cache-dependency-path: bun.lock
 
-      - name: Download node_modules artifacts
-        uses: actions/download-artifact@v7
-        with:
-          name: node-modules-${{ github.run_id }}
-          path: . # Extract to workspace root
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
 
       - name: Run lint
         run: bun run lint
@@ -99,12 +93,17 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
+          cache: true
+          cache-dependency-path: bun.lock
 
-      - name: Download node_modules artifacts
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Download Prisma generated client
         uses: actions/download-artifact@v7
         with:
-          name: node-modules-${{ github.run_id }}
-          path: .
+          name: prisma-generated-${{ github.run_id }}
+          path: packages/database/generated
 
       - name: Run build
         run: bun run build
@@ -124,12 +123,17 @@ jobs:
   #       uses: oven-sh/setup-bun@v2
   #       with:
   #         bun-version: ${{ env.BUN_VERSION }}
+  #         cache: true
+  #         cache-dependency-path: bun.lock
 
-  #     - name: Download node_modules artifacts
+  #     - name: Install dependencies
+  #       run: bun install --frozen-lockfile
+
+  #     - name: Download Prisma generated client
   #       uses: actions/download-artifact@v7
   #       with:
-  #         name: node-modules-${{ github.run_id }}
-  #         path: .
+  #         name: prisma-generated-${{ github.run_id }}
+  #         path: packages/database/generated
 
   #     - name: Run tests
   #       run: bun run test
@@ -165,12 +169,17 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
+          cache: true
+          cache-dependency-path: bun.lock
 
-      - name: Download node_modules artifacts
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Download Prisma generated client
         uses: actions/download-artifact@v7
         with:
-          name: node-modules-${{ github.run_id }}
-          path: .
+          name: prisma-generated-${{ github.run_id }}
+          path: packages/database/generated
 
       - name: Run Prisma migrate deploy
         working-directory: packages/database
