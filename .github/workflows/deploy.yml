@@ -112,6 +112,7 @@ jobs:
         with:
           name: vercel-api-build-${{ github.run_id }}
           path: .vercel/
+          include-hidden-files: true
           retention-days: 1
 
   # Build Web: Create Vercel build output for Next.js
@@ -179,6 +180,7 @@ jobs:
           path: |
             .vercel/
             apps/web/.next/
+          include-hidden-files: true
           retention-days: 1
 
   # Migrate: Apply database migrations before deploy
