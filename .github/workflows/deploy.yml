@@ -296,6 +296,12 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Download Prisma generated client
+        uses: actions/download-artifact@v7
+        with:
+          name: prisma-generated-${{ github.run_id }}
+          path: packages/database/generated
+
       - name: Download Vercel build artifacts
         uses: actions/download-artifact@v7
         with:
