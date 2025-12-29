@@ -87,12 +87,25 @@ jobs:
         run: bun add -g vercel@latest
 
       - name: Pull Vercel Environment
-        run: vercel pull --environment=production --yes --token=${{ secrets.VERCEL_TOKEN }}
-        # Downloads .vercel/project.json and env vars
+        run: |
+          echo "=== Debug: Environment Check ==="
+          echo "Working directory: $(pwd)"
+          echo ""
+          echo "=== Running: vercel pull ==="
+          vercel pull --environment=production --yes --token=${{ secrets.VERCEL_TOKEN }}
+          echo ""
+          echo "=== Debug: After vercel pull ==="
+          ls -la .vercel/ 2>/dev/null || echo "ERROR: .vercel/ directory not found"
+          cat .vercel/project.json 2>/dev/null || echo "ERROR: .vercel/project.json not found"
 
       - name: Build with Vercel
-        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
-        # Creates .vercel/output/ with optimized build
+        run: |
+          echo "=== Running: vercel build ==="
+          vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+          echo ""
+          echo "=== Debug: After vercel build ==="
+          ls -la .vercel/ 2>/dev/null || echo "ERROR: .vercel/ directory not found"
+          ls -la .vercel/output/ 2>/dev/null || echo "ERROR: .vercel/output/ directory not found"
 
       - name: Upload Vercel build artifacts
         uses: actions/upload-artifact@v6
@@ -137,18 +150,35 @@ jobs:
         run: bun add -g vercel@latest
 
       - name: Pull Vercel Environment
-        run: vercel pull --environment=production --yes --token=${{ secrets.VERCEL_TOKEN }}
+        run: |
+          echo "=== Debug: Environment Check ==="
+          echo "Working directory: $(pwd)"
+          echo ""
+          echo "=== Running: vercel pull ==="
+          vercel pull --environment=production --yes --token=${{ secrets.VERCEL_TOKEN }}
+          echo ""
+          echo "=== Debug: After vercel pull ==="
+          ls -la .vercel/ 2>/dev/null || echo "ERROR: .vercel/ directory not found"
+          cat .vercel/project.json 2>/dev/null || echo "ERROR: .vercel/project.json not found"
 
       - name: Build with Vercel
-        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+        run: |
+          echo "=== Running: vercel build ==="
+          vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+          echo ""
+          echo "=== Debug: After vercel build ==="
+          ls -la .vercel/ 2>/dev/null || echo "ERROR: .vercel/ directory not found"
+          ls -la .vercel/output/ 2>/dev/null || echo "ERROR: .vercel/output/ directory not found"
+          ls -la apps/web/.next/ 2>/dev/null || echo "WARNING: apps/web/.next/ directory not found"
 
       - name: Upload Vercel build artifacts
         uses: actions/upload-artifact@v6
         with:
           name: vercel-web-build-${{ github.run_id }}
+          # Include .vercel build output and Next.js build output
           path: |
             .vercel/
-            apps/web/.next/ # Include Next.js build output
+            apps/web/.next/
           retention-days: 1
 
   # Migrate: Apply database migrations before deploy
