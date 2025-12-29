@@ -41,8 +41,6 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          cache: true
-          cache-dependency-path: bun.lock
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -75,8 +73,6 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          cache: true
-          cache-dependency-path: bun.lock
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -127,8 +123,6 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          cache: true
-          cache-dependency-path: bun.lock
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -174,8 +168,6 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          cache: true
-          cache-dependency-path: bun.lock
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
