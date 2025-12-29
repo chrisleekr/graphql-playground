@@ -88,24 +88,11 @@ jobs:
 
       - name: Pull Vercel Environment
         run: |
-          echo "=== Debug: Environment Check ==="
-          echo "Working directory: $(pwd)"
-          echo ""
-          echo "=== Running: vercel pull ==="
           vercel pull --environment=production --yes --token=${{ secrets.VERCEL_TOKEN }}
-          echo ""
-          echo "=== Debug: After vercel pull ==="
-          ls -la .vercel/ 2>/dev/null || echo "ERROR: .vercel/ directory not found"
-          cat .vercel/project.json 2>/dev/null || echo "ERROR: .vercel/project.json not found"
 
       - name: Build with Vercel
         run: |
-          echo "=== Running: vercel build ==="
           vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
-          echo ""
-          echo "=== Debug: After vercel build ==="
-          ls -la .vercel/ 2>/dev/null || echo "ERROR: .vercel/ directory not found"
-          ls -la .vercel/output/ 2>/dev/null || echo "ERROR: .vercel/output/ directory not found"
 
       - name: Upload Vercel build artifacts
         uses: actions/upload-artifact@v6
@@ -152,25 +139,11 @@ jobs:
 
       - name: Pull Vercel Environment
         run: |
-          echo "=== Debug: Environment Check ==="
-          echo "Working directory: $(pwd)"
-          echo ""
-          echo "=== Running: vercel pull ==="
           vercel pull --environment=production --yes --token=${{ secrets.VERCEL_TOKEN }}
-          echo ""
-          echo "=== Debug: After vercel pull ==="
-          ls -la .vercel/ 2>/dev/null || echo "ERROR: .vercel/ directory not found"
-          cat .vercel/project.json 2>/dev/null || echo "ERROR: .vercel/project.json not found"
 
       - name: Build with Vercel
         run: |
-          echo "=== Running: vercel build ==="
           vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
-          echo ""
-          echo "=== Debug: After vercel build ==="
-          ls -la .vercel/ 2>/dev/null || echo "ERROR: .vercel/ directory not found"
-          ls -la .vercel/output/ 2>/dev/null || echo "ERROR: .vercel/output/ directory not found"
-          ls -la apps/web/.next/ 2>/dev/null || echo "WARNING: apps/web/.next/ directory not found"
 
       - name: Upload Vercel build artifacts
         uses: actions/upload-artifact@v6
@@ -295,12 +268,6 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
-
-      - name: Download Prisma generated client
-        uses: actions/download-artifact@v7
-        with:
-          name: prisma-generated-${{ github.run_id }}
-          path: packages/database/generated
 
       - name: Download Vercel build artifacts
         uses: actions/download-artifact@v7
