@@ -214,7 +214,10 @@ jobs:
     outputs:
       deployment-url: ${{ steps.deploy.outputs.url }} # Export for summary job
     steps:
-      # Note: --prebuilt only needs .vercel/ directory, no checkout or deps required
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      # Note: --prebuilt only needs .vercel/ directory, no deps required
       - name: Download Vercel build artifacts
         uses: actions/download-artifact@v7
         with:
@@ -250,6 +253,9 @@ jobs:
     outputs:
       deployment-url: ${{ steps.deploy.outputs.url }}
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
       # Note: --prebuilt only needs .vercel/ directory, no deps required
       - name: Download Vercel build artifacts
         uses: actions/download-artifact@v7
