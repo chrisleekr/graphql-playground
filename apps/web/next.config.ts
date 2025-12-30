@@ -7,7 +7,7 @@ const repoRoot = path.resolve(__dirname, '../..');
 const nextConfig: NextConfig = {
   transpilePackages: ['@repo/shared', '@repo/database'],
   // Externalize pino to avoid bundling issues with worker threads
-  serverExternalPackages: ['pino', 'pino-pretty'],
+  serverExternalPackages: ['pino', 'pino-pretty', '@prisma/client'],
 
   outputFileTracingRoot: repoRoot,
   turbopack: {

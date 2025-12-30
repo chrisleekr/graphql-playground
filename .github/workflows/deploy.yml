@@ -91,21 +91,8 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
-      - name: Download node_modules
-        uses: actions/download-artifact@v7
-        with:
-          name: node-modules-${{ github.run_id }}
-          path: .
-
-      - name: Extract node_modules
-        run: tar -xzf node_modules.tar.gz
-
-      - name: Download Prisma generated client
-        uses: actions/download-artifact@v7
-        with:
-          name: prisma-generated-${{ github.run_id }}
-          path: packages/database/generated
-
+      # Note: vercel build runs configured Install Command (bun install) and
+      # Build Command (bun run build:api) which handles deps and Prisma generation
       - name: Install Vercel CLI
         run: bun add -g vercel@latest
 
@@ -148,21 +135,8 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
-      - name: Download node_modules
-        uses: actions/download-artifact@v7
-        with:
-          name: node-modules-${{ github.run_id }}
-          path: .
-
-      - name: Extract node_modules
-        run: tar -xzf node_modules.tar.gz
-
-      - name: Download Prisma generated client
-        uses: actions/download-artifact@v7
-        with:
-          name: prisma-generated-${{ github.run_id }}
-          path: packages/database/generated
-
+      # Note: vercel build runs configured Install Command (bun install) and
+      # Build Command (bun run build:web) which handles deps and Prisma generation
       - name: Install Vercel CLI
         run: bun add -g vercel@latest
 
@@ -240,29 +214,7 @@ jobs:
     outputs:
       deployment-url: ${{ steps.deploy.outputs.url }} # Export for summary job
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: "24" # Use Node for npx vercel (more stable than bun)
-
-      - name: Download node_modules
-        uses: actions/download-artifact@v7
-        with:
-          name: node-modules-${{ github.run_id }}
-          path: .
-
-      - name: Extract node_modules
-        run: tar -xzf node_modules.tar.gz
-
-      - name: Download Prisma generated client
-        uses: actions/download-artifact@v7
-        with:
-          name: prisma-generated-${{ github.run_id }}
-          path: packages/database/generated
-
+      # Note: --prebuilt only needs .vercel/ directory, no checkout or deps required
       - name: Download Vercel build artifacts
         uses: actions/download-artifact@v7
         with:
@@ -298,29 +250,7 @@ jobs:
     outputs:
       deployment-url: ${{ steps.deploy.outputs.url }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: "24"
-
-      - name: Download node_modules
-        uses: actions/download-artifact@v7
-        with:
-          name: node-modules-${{ github.run_id }}
-          path: .
-
-      - name: Extract node_modules
-        run: tar -xzf node_modules.tar.gz
-
-      - name: Download Prisma generated client
-        uses: actions/download-artifact@v7
-        with:
-          name: prisma-generated-${{ github.run_id }}
-          path: packages/database/generated
-
+      # Note: --prebuilt only needs .vercel/ directory, no deps required
       - name: Download Vercel build artifacts
         uses: actions/download-artifact@v7
         with:
