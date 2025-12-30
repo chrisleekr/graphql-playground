@@ -212,6 +212,12 @@ jobs:
       - name: Extract node_modules
         run: tar -xzf node_modules.tar.gz
 
+      - name: Download Prisma generated client
+        uses: actions/download-artifact@v7
+        with:
+          name: prisma-generated-${{ github.run_id }}
+          path: packages/database/generated
+
       - name: Apply database migrations
         working-directory: packages/database
         run: |
@@ -250,6 +256,12 @@ jobs:
 
       - name: Extract node_modules
         run: tar -xzf node_modules.tar.gz
+
+      - name: Download Prisma generated client
+        uses: actions/download-artifact@v7
+        with:
+          name: prisma-generated-${{ github.run_id }}
+          path: packages/database/generated
 
       - name: Download Vercel build artifacts
         uses: actions/download-artifact@v7
