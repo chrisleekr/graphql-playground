@@ -1,5 +1,10 @@
 # Deploy Workflow - Build and Deploy to Vercel
 # Only runs after CI passes, preventing broken deployments
+#
+# Note: Build artifacts are bundled as tarballs (.tar.gz) to preserve symlinks
+# in node_modules/.bin/. GitHub Actions upload-artifact breaks symlinks, which
+# causes Prisma client resolution to fail at runtime.
+# Refer: https://github.com/actions/upload-artifact/issues/38
 name: Deploy
 
 on:
@@ -24,6 +29,9 @@ env:
   TERRAFORM_VERSION: "1.14.3"
   VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }} # Required by Vercel CLI
   VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+  # Production domains (version controlled, visible in PRs)
+  API_PRODUCTION_DOMAIN: "https://graphql-playground-api.vercel.app"
+  WEB_PRODUCTION_DOMAIN: "https://graphql-playground-web.vercel.app"
 
 jobs:
   # Build API: Create Vercel build output
@@ -178,7 +186,7 @@ jobs:
     needs: migrate # Deploy only after migrations succeed
     environment:
       name: production # GitHub Environment for protection rules
-      url: ${{ steps.deploy.outputs.url }} # Show deployment URL in UI
+      url: ${{ env.API_PRODUCTION_DOMAIN }} # Production domain (not deployment-specific URL)
     env:
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_API }}
       VERCEL_TELEMETRY_DISABLED: "true"
@@ -219,7 +227,7 @@ jobs:
     needs: migrate
     environment:
       name: production
-      url: ${{ steps.deploy.outputs.url }}
+      url: ${{ env.WEB_PRODUCTION_DOMAIN }} # Production domain (not deployment-specific URL)
     env:
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_WEB }}
       VERCEL_TELEMETRY_DISABLED: "true"
