@@ -21,17 +21,17 @@
     "db:deploy": "prisma migrate deploy"
   },
   "dependencies": {
-    "@prisma/adapter-pg": "^7.1.0",
-    "@prisma/client": "^7.1.0",
-    "@prisma/client-runtime-utils": "^7.1.0",
+    "@prisma/adapter-pg": "^7.2.0",
+    "@prisma/client": "^7.2.0",
+    "@prisma/client-runtime-utils": "^7.2.0",
     "dotenv": "^17.2.3",
     "pg": "^8.16.3"
   },
   "devDependencies": {
     "@repo/typescript-config": "workspace:*",
-    "@types/node": "^25.0.1",
+    "@types/node": "^25.0.3",
     "@types/pg": "^8.16.0",
-    "prisma": "^7.1.0",
+    "prisma": "^7.2.0",
     "typescript": "^5.9.3"
   }
 }
