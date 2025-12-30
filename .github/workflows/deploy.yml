@@ -26,58 +26,13 @@ env:
   VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
 
 jobs:
-  # Setup: Install deps and generate Prisma client
-  setup:
-    name: Setup
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    # Guard: Only proceed if CI passed OR manually triggered
-    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: ${{ env.BUN_VERSION }}
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Generate Prisma client
-        run: bun run db:generate
-
-      - name: Upload Prisma generated client
-        uses: actions/upload-artifact@v6
-        with:
-          name: prisma-generated-${{ github.run_id }}
-          path: packages/database/generated
-          retention-days: 1
-
-      # Tarball preserves symlinks in node_modules/.bin/ which are broken by actions/upload-artifact. Without symlinks, binaries like `prisma` fail.
-      # Refer: https://github.com/actions/upload-artifact/issues/38
-      - name: Create node_modules tarball
-        run: |
-          tar -czf node_modules.tar.gz \
-            node_modules/ \
-            apps/api/node_modules/ \
-            apps/web/node_modules/ \
-            packages/*/node_modules/
-
-      - name: Upload node_modules
-        uses: actions/upload-artifact@v6
-        with:
-          name: node-modules-${{ github.run_id }}
-          path: node_modules.tar.gz
-          retention-days: 1
-
   # Build API: Create Vercel build output
   build-api:
     name: Build API
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: setup
+    # Guard: Only proceed if CI passed OR manually triggered
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     env:
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_API }} # Links to Vercel project
       VERCEL_TELEMETRY_DISABLED: "true" # Privacy: Disable telemetry
@@ -91,8 +46,6 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
-      # Note: vercel build runs configured Install Command (bun install) and
-      # Build Command (bun run build:api) which handles deps and Prisma generation
       - name: Install Vercel CLI
         run: bun add -g vercel@latest
 
@@ -100,9 +53,28 @@ jobs:
         run: |
           vercel pull --environment=production --yes --token=${{ secrets.VERCEL_TOKEN }}
 
+      # vercel build runs configured Install Command (bun install) and
+      # Build Command (bun run build:api) which handles deps and Prisma generation
       - name: Build with Vercel
         run: |
           vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+
+      # Tarball preserves symlinks in node_modules/.bin/ which are broken by actions/upload-artifact
+      # Refer: https://github.com/actions/upload-artifact/issues/38
+      - name: Create node_modules tarball
+        run: |
+          tar -czf node_modules.tar.gz \
+            node_modules/ \
+            apps/api/node_modules/ \
+            apps/web/node_modules/ \
+            packages/*/node_modules/
+
+      - name: Upload node_modules
+        uses: actions/upload-artifact@v6
+        with:
+          name: node-modules-api-${{ github.run_id }}
+          path: node_modules.tar.gz
+          retention-days: 1
 
       - name: Upload Vercel build artifacts
         uses: actions/upload-artifact@v6
@@ -117,7 +89,8 @@ jobs:
     name: Build Web
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: setup
+    # Guard: Only proceed if CI passed OR manually triggered
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     env:
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_WEB }}
       VERCEL_TELEMETRY_DISABLED: "true"
@@ -135,8 +108,6 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
-      # Note: vercel build runs configured Install Command (bun install) and
-      # Build Command (bun run build:web) which handles deps and Prisma generation
       - name: Install Vercel CLI
         run: bun add -g vercel@latest
 
@@ -144,9 +115,28 @@ jobs:
         run: |
           vercel pull --environment=production --yes --token=${{ secrets.VERCEL_TOKEN }}
 
+      # vercel build runs configured Install Command (bun install) and
+      # Build Command (bun run build:web) which handles deps and Prisma generation
       - name: Build with Vercel
         run: |
           vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+
+      # Tarball preserves symlinks in node_modules/.bin/ which are broken by actions/upload-artifact
+      # Refer: https://github.com/actions/upload-artifact/issues/38
+      - name: Create node_modules tarball
+        run: |
+          tar -czf node_modules.tar.gz \
+            node_modules/ \
+            apps/api/node_modules/ \
+            apps/web/node_modules/ \
+            packages/*/node_modules/
+
+      - name: Upload node_modules
+        uses: actions/upload-artifact@v6
+        with:
+          name: node-modules-web-${{ github.run_id }}
+          path: node_modules.tar.gz
+          retention-days: 1
 
       - name: Upload Vercel build artifacts
         uses: actions/upload-artifact@v6
@@ -177,20 +167,15 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
+      # Use node_modules from build-web (includes Prisma generated via db:generate)
       - name: Download node_modules
         uses: actions/download-artifact@v7
         with:
-          name: node-modules-${{ github.run_id }}
+          name: node-modules-web-${{ github.run_id }}
           path: .
 
       - name: Extract node_modules
         run: tar -xzf node_modules.tar.gz
-
-      - name: Download Prisma generated client
-        uses: actions/download-artifact@v7
-        with:
-          name: prisma-generated-${{ github.run_id }}
-          path: packages/database/generated
 
       - name: Apply database migrations
         working-directory: packages/database
@@ -217,7 +202,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      # Note: --prebuilt only needs .vercel/ directory, no deps required
+      - name: Download node_modules
+        uses: actions/download-artifact@v7
+        with:
+          name: node-modules-api-${{ github.run_id }}
+          path: .
+
+      - name: Extract node_modules
+        run: tar -xzf node_modules.tar.gz
+
       - name: Download Vercel build artifacts
         uses: actions/download-artifact@v7
         with:
@@ -256,7 +249,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      # Note: --prebuilt only needs .vercel/ directory, no deps required
+      - name: Download node_modules
+        uses: actions/download-artifact@v7
+        with:
+          name: node-modules-web-${{ github.run_id }}
+          path: .
+
+      - name: Extract node_modules
+        run: tar -xzf node_modules.tar.gz
+
       - name: Download Vercel build artifacts
         uses: actions/download-artifact@v7
         with:
