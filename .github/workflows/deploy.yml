@@ -55,17 +55,21 @@ jobs:
           path: packages/database/generated
           retention-days: 1
 
+      # Tarball preserves symlinks in node_modules/.bin/ which are broken by actions/upload-artifact. Without symlinks, binaries like `prisma` fail.
+      # Refer: https://github.com/actions/upload-artifact/issues/38
+      - name: Create node_modules tarball
+        run: |
+          tar -czf node_modules.tar.gz \
+            node_modules/ \
+            apps/api/node_modules/ \
+            apps/web/node_modules/ \
+            packages/*/node_modules/
+
       - name: Upload node_modules
         uses: actions/upload-artifact@v6
         with:
           name: node-modules-${{ github.run_id }}
-          path: |
-            node_modules/
-            apps/api/node_modules/
-            apps/web/node_modules/
-            packages/database/node_modules/
-            packages/redis/node_modules/
-            packages/shared/node_modules/
+          path: node_modules.tar.gz
           retention-days: 1
 
   # Build API: Create Vercel build output
@@ -92,6 +96,9 @@ jobs:
         with:
           name: node-modules-${{ github.run_id }}
           path: .
+
+      - name: Extract node_modules
+        run: tar -xzf node_modules.tar.gz
 
       - name: Download Prisma generated client
         uses: actions/download-artifact@v7
@@ -147,6 +154,9 @@ jobs:
           name: node-modules-${{ github.run_id }}
           path: .
 
+      - name: Extract node_modules
+        run: tar -xzf node_modules.tar.gz
+
       - name: Download Prisma generated client
         uses: actions/download-artifact@v7
         with:
@@ -199,6 +209,9 @@ jobs:
           name: node-modules-${{ github.run_id }}
           path: .
 
+      - name: Extract node_modules
+        run: tar -xzf node_modules.tar.gz
+
       - name: Apply database migrations
         working-directory: packages/database
         run: |
@@ -229,16 +242,14 @@ jobs:
         with:
           node-version: "24" # Use Node for npx vercel (more stable than bun)
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: ${{ env.BUN_VERSION }}
-
       - name: Download node_modules
         uses: actions/download-artifact@v7
         with:
           name: node-modules-${{ github.run_id }}
           path: .
+
+      - name: Extract node_modules
+        run: tar -xzf node_modules.tar.gz
 
       - name: Download Vercel build artifacts
         uses: actions/download-artifact@v7
@@ -283,16 +294,14 @@ jobs:
         with:
           node-version: "24"
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: ${{ env.BUN_VERSION }}
-
       - name: Download node_modules
         uses: actions/download-artifact@v7
         with:
           name: node-modules-${{ github.run_id }}
           path: .
+
+      - name: Extract node_modules
+        run: tar -xzf node_modules.tar.gz
 
       - name: Download Vercel build artifacts
         uses: actions/download-artifact@v7
