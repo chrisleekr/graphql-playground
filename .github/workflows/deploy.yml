@@ -61,27 +61,21 @@ jobs:
 
       # Tarball preserves symlinks in node_modules/.bin/ which are broken by actions/upload-artifact
       # Refer: https://github.com/actions/upload-artifact/issues/38
-      - name: Create node_modules tarball
+      # Include .vercel/ build output in the same tarball for consistency
+      - name: Create build artifacts tarball
         run: |
-          tar -czf node_modules.tar.gz \
+          tar -czf build-api.tar.gz \
+            .vercel/ \
             node_modules/ \
             apps/api/node_modules/ \
             apps/web/node_modules/ \
             packages/*/node_modules/
 
-      - name: Upload node_modules
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v6
         with:
-          name: node-modules-api-${{ github.run_id }}
-          path: node_modules.tar.gz
-          retention-days: 1
-
-      - name: Upload Vercel build artifacts
-        uses: actions/upload-artifact@v6
-        with:
-          name: vercel-api-build-${{ github.run_id }}
-          path: .vercel/
-          include-hidden-files: true
+          name: build-api-${{ github.run_id }}
+          path: build-api.tar.gz
           retention-days: 1
 
   # Build Web: Create Vercel build output for Next.js
@@ -123,30 +117,22 @@ jobs:
 
       # Tarball preserves symlinks in node_modules/.bin/ which are broken by actions/upload-artifact
       # Refer: https://github.com/actions/upload-artifact/issues/38
-      - name: Create node_modules tarball
+      # Include .vercel/ and .next/ build outputs in the same tarball for consistency
+      - name: Create build artifacts tarball
         run: |
-          tar -czf node_modules.tar.gz \
+          tar -czf build-web.tar.gz \
+            .vercel/ \
+            apps/web/.next/ \
             node_modules/ \
             apps/api/node_modules/ \
             apps/web/node_modules/ \
             packages/*/node_modules/
 
-      - name: Upload node_modules
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v6
         with:
-          name: node-modules-web-${{ github.run_id }}
-          path: node_modules.tar.gz
-          retention-days: 1
-
-      - name: Upload Vercel build artifacts
-        uses: actions/upload-artifact@v6
-        with:
-          name: vercel-web-build-${{ github.run_id }}
-          # Include .vercel build output and Next.js build output
-          path: |
-            .vercel/
-            apps/web/.next/
-          include-hidden-files: true
+          name: build-web-${{ github.run_id }}
+          path: build-web.tar.gz
           retention-days: 1
 
   # Migrate: Apply database migrations before deploy
@@ -167,15 +153,15 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
-      # Use node_modules from build-web (includes Prisma generated via db:generate)
-      - name: Download node_modules
+      # Use build artifacts from build-web (includes node_modules with Prisma generated)
+      - name: Download build artifacts
         uses: actions/download-artifact@v7
         with:
-          name: node-modules-web-${{ github.run_id }}
+          name: build-web-${{ github.run_id }}
           path: .
 
-      - name: Extract node_modules
-        run: tar -xzf node_modules.tar.gz
+      - name: Extract build artifacts
+        run: tar -xzf build-web.tar.gz
 
       - name: Apply database migrations
         working-directory: packages/database
@@ -202,20 +188,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Download node_modules
+      - name: Download build artifacts
         uses: actions/download-artifact@v7
         with:
-          name: node-modules-api-${{ github.run_id }}
+          name: build-api-${{ github.run_id }}
           path: .
 
-      - name: Extract node_modules
-        run: tar -xzf node_modules.tar.gz
-
-      - name: Download Vercel build artifacts
-        uses: actions/download-artifact@v7
-        with:
-          name: vercel-api-build-${{ github.run_id }}
-          path: .vercel/
+      - name: Extract build artifacts
+        run: tar -xzf build-api.tar.gz
 
       - name: Deploy to Vercel
         id: deploy
@@ -249,20 +229,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Download node_modules
+      - name: Download build artifacts
         uses: actions/download-artifact@v7
         with:
-          name: node-modules-web-${{ github.run_id }}
+          name: build-web-${{ github.run_id }}
           path: .
 
-      - name: Extract node_modules
-        run: tar -xzf node_modules.tar.gz
-
-      - name: Download Vercel build artifacts
-        uses: actions/download-artifact@v7
-        with:
-          name: vercel-web-build-${{ github.run_id }}
-          path: . # Extract to root (includes apps/web/.next/)
+      - name: Extract build artifacts
+        run: tar -xzf build-web.tar.gz
 
       - name: Deploy to Vercel
         id: deploy
