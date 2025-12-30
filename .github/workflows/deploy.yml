@@ -200,9 +200,10 @@ jobs:
           path: .
 
       - name: Apply database migrations
+        working-directory: packages/database
         run: |
           echo "Applying migrations..."
-          bunx prisma migrate deploy
+          bun run db:deploy
           echo "Migrations completed successfully"
 
   # Deploy API: Push prebuilt output to Vercel
