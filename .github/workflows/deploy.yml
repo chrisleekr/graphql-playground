@@ -200,10 +200,9 @@ jobs:
           path: .
 
       - name: Apply database migrations
-        working-directory: packages/database
         run: |
           echo "Applying migrations..."
-          ./node_modules/.bin/prisma migrate deploy
+          bunx prisma migrate deploy
           echo "Migrations completed successfully"
 
   # Deploy API: Push prebuilt output to Vercel
