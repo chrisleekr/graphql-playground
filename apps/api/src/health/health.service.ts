@@ -37,10 +37,17 @@ export class HealthService {
       'Health check completed',
     );
 
-    // Fire-and-forget: update database health check timestamp
-    void this.updateLastDatabaseHealthCheckAt();
-    // Fire-and-forget: update Redis health check timestamp
-    void this.updateLastRedisHealthCheckAt();
+    if (isHealthy) {
+      try {
+        // Fire-and-forget: update database health check timestamp
+        void Promise.all([
+          this.updateLastDatabaseHealthCheckAt(),
+          this.updateLastRedisHealthCheckAt(),
+        ]);
+      } catch (error) {
+        this.logger.error({ fn: 'check', err: error }, 'Failed to update health check timestamps');
+      }
+    }
 
     return {
       status: isHealthy ? 'healthy' : 'unhealthy',
