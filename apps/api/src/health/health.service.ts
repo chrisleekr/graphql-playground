@@ -38,15 +38,13 @@ export class HealthService {
     );
 
     if (isHealthy) {
-      try {
-        // Fire-and-forget: update database health check timestamp
-        void Promise.all([
-          this.updateLastDatabaseHealthCheckAt(),
-          this.updateLastRedisHealthCheckAt(),
-        ]);
-      } catch (error) {
+      // Fire-and-forget: update database health check timestamp
+      void Promise.all([
+        this.updateLastDatabaseHealthCheckAt(),
+        this.updateLastRedisHealthCheckAt(),
+      ]).catch((error) => {
         this.logger.error({ fn: 'check', err: error }, 'Failed to update health check timestamps');
-      }
+      });
     }
 
     return {
