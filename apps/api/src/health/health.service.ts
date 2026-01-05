@@ -61,7 +61,7 @@ export class HealthService {
 
   /**
    * Update the last_healthcheck_at setting in the database.
-   * This is used to workaround for keeping database in use.
+   * This is used as a workaround for keeping the database in use.
    * @returns void
    */
   private async updateLastDatabaseHealthCheckAt(): Promise<void> {
@@ -86,7 +86,7 @@ export class HealthService {
 
   /**
    * Update the last_redis_healthcheck_at key in Redis.
-   * This is used to workaround for keeping Redis in use.
+   * This is used as a workaround for keeping the Redis instance in use.
    * @returns void
    */
   private async updateLastRedisHealthCheckAt(): Promise<void> {
