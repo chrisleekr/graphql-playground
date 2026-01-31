@@ -30,7 +30,7 @@
     "@repo/typescript-config": "workspace:*",
     "dotenv-cli": "^11.0.0",
     "eslint": "^9.39.2",
-    "globals": "^16.5.0",
+    "globals": "^17.2.0",
     "prettier": "^3.7.4",
     "turbo": "^2.7.2",
     "typescript": "^5.9.3",
